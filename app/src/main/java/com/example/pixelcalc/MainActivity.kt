@@ -57,7 +57,7 @@ private enum class AppMode {
     MATRIX,
 }
 
-private const val PixelCreditLabel = "XUE \u00D7 CODEX"
+private const val PixelCreditLabel = "CODEX \u00D7 XUE"
 private const val AdoptResultToLeftLabel = "C\u2192A"
 private const val AdoptResultToRightLabel = "C\u2192B"
 
