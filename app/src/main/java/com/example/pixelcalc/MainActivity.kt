@@ -8,6 +8,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -16,10 +18,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -32,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -836,6 +842,8 @@ private fun MatrixResultPanel(
     hasError: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = modifier
             .background(PixelPanel, RectangleShape)
@@ -851,13 +859,61 @@ private fun MatrixResultPanel(
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.sp,
         )
-        ResultGrid(
-            rows = rows,
-            columns = columns,
-            entries = entries,
-            hasError = hasError,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) {
+            val density = LocalDensity.current
+            val viewportHeightPx = with(density) { maxHeight.toPx() }
+            val contentHeightPx = viewportHeightPx + scrollState.maxValue
+            val showScrollbar = scrollState.maxValue > 0 && contentHeightPx > 0f
+            val scrollbarPadding = if (showScrollbar) 8.dp else 0.dp
+            val thumbHeight = if (showScrollbar) {
+                with(density) {
+                    ((viewportHeightPx * viewportHeightPx) / contentHeightPx)
+                        .toDp()
+                        .coerceAtLeast(16.dp)
+                }
+            } else {
+                0.dp
+            }
+            val thumbOffset = if (showScrollbar) {
+                val trackHeightPx = with(density) { (maxHeight - thumbHeight).toPx() }
+                val offsetPx = trackHeightPx * scrollState.value / scrollState.maxValue
+                with(density) { offsetPx.toDp() }
+            } else {
+                0.dp
+            }
+
+            ResultGrid(
+                rows = rows,
+                columns = columns,
+                entries = entries,
+                hasError = hasError,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = scrollbarPadding)
+                    .verticalScroll(scrollState),
+            )
+            if (showScrollbar) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .width(2.dp)
+                        .background(PixelLine, RectangleShape),
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(y = thumbOffset)
+                        .height(thumbHeight)
+                        .width(2.dp)
+                        .background(PixelClayDark, RectangleShape),
+                )
+            }
+        }
     }
 }
 
