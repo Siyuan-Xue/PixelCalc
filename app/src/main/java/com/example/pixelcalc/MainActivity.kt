@@ -94,6 +94,12 @@ fun PixelCalcApp(modifier: Modifier = Modifier) {
     var standardJustEvaluated by rememberSaveable {
         mutableStateOf(CalculatorEngine.initialState.justEvaluated)
     }
+    var standardAngleUnitName by rememberSaveable {
+        mutableStateOf(CalculatorEngine.initialState.angleUnit.name)
+    }
+    var standardExpressionTokens by rememberSaveable {
+        mutableStateOf(CalculatorEngine.initialState.expressionTokens)
+    }
 
     var matrixM by rememberSaveable { mutableStateOf(MatrixEngine.defaultDimensions.m) }
     var matrixN by rememberSaveable { mutableStateOf(MatrixEngine.defaultDimensions.n) }
@@ -124,6 +130,8 @@ fun PixelCalcApp(modifier: Modifier = Modifier) {
         enteringFreshNumber = standardEnteringFreshNumber,
         hasError = standardHasError,
         justEvaluated = standardJustEvaluated,
+        angleUnit = CalculatorAngleUnit.valueOf(standardAngleUnitName),
+        expressionTokens = standardExpressionTokens,
     )
 
     val matrixDimensions = MatrixDimensions(matrixM, matrixN, matrixP)
@@ -137,6 +145,8 @@ fun PixelCalcApp(modifier: Modifier = Modifier) {
         standardEnteringFreshNumber = nextState.enteringFreshNumber
         standardHasError = nextState.hasError
         standardJustEvaluated = nextState.justEvaluated
+        standardAngleUnitName = nextState.angleUnit.name
+        standardExpressionTokens = nextState.expressionTokens
     }
 
     fun resetMatrix() {
@@ -389,18 +399,12 @@ private fun StandardCalculatorScreen(
                 .heightIn(min = 42.dp),
             onClick = onToggleScience,
         )
-        if (scienceOpen) {
-            ScienceKeyGrid(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(0.58f),
-                onPress = onPress,
-            )
-        }
         StandardKeyGrid(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
+            scienceOpen = scienceOpen,
+            angleUnit = state.angleUnit,
             onPress = onPress,
         )
     }
@@ -907,35 +911,40 @@ private fun ResultGrid(
 }
 
 @Composable
-private fun ScienceKeyGrid(
-    onPress: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val rows = listOf(
-        listOf("sin", "cos", "tan", CalculatorSymbols.SQUARE, CalculatorSymbols.SQRT),
-        listOf(
-            CalculatorSymbols.POWER,
-            CalculatorSymbols.PI,
-            "e",
-            CalculatorSymbols.DOT,
-            CalculatorSymbols.PLUS_MINUS,
-        ),
-    )
-
-    PixelKeyRows(rows = rows, onPress = onPress, modifier = modifier)
-}
-
-@Composable
 private fun StandardKeyGrid(
     onPress: (String) -> Unit,
+    scienceOpen: Boolean,
+    angleUnit: CalculatorAngleUnit,
     modifier: Modifier = Modifier,
 ) {
-    val rows = listOf(
-        listOf("7", "8", "9", CalculatorSymbols.DIVIDE),
-        listOf("4", "5", "6", CalculatorSymbols.MULTIPLY),
-        listOf("1", "2", "3", "-"),
-        listOf("C", "0", "=", "+"),
+    val scienceRows = listOf(
+        listOf(
+            CalculatorSymbols.SQRT,
+            CalculatorSymbols.PI,
+            CalculatorSymbols.POWER,
+            CalculatorSymbols.SQUARE,
+        ),
+        listOf(angleUnit.label, "sin", "cos", "tan"),
+        listOf(
+            CalculatorSymbols.INVERSE,
+            "e",
+            CalculatorSymbols.NATURAL_LOG,
+            CalculatorSymbols.COMMON_LOG,
+        ),
     )
+    val standardRows = listOf(
+        listOf(
+            CalculatorSymbols.CLEAR_ALL,
+            CalculatorSymbols.PARENS,
+            CalculatorSymbols.PERCENT,
+            CalculatorSymbols.DIVIDE,
+        ),
+        listOf("7", "8", "9", CalculatorSymbols.MULTIPLY),
+        listOf("4", "5", "6", "-"),
+        listOf("1", "2", "3", "+"),
+        listOf("0", CalculatorSymbols.DOT, CalculatorSymbols.BACKSPACE, "="),
+    )
+    val rows = if (scienceOpen) scienceRows + standardRows else standardRows
 
     PixelKeyRows(rows = rows, onPress = onPress, modifier = modifier)
 }
@@ -997,22 +1006,29 @@ private fun PixelKey(
         "-",
         CalculatorSymbols.MULTIPLY,
         CalculatorSymbols.DIVIDE,
+        CalculatorSymbols.PARENS,
+        CalculatorSymbols.PERCENT,
         CalculatorSymbols.POWER,
         CalculatorSymbols.SQUARE,
         CalculatorSymbols.SQRT,
+        CalculatorSymbols.INVERSE,
+        CalculatorSymbols.NATURAL_LOG,
+        CalculatorSymbols.COMMON_LOG,
         CalculatorSymbols.PI,
         CalculatorSymbols.DOT,
         "e",
         "sin",
         "cos",
         "tan",
+        CalculatorAngleUnit.RADIAN.label,
+        CalculatorAngleUnit.DEGREE.label,
         "NEXT",
         "A/B",
         CalculatorSymbols.PLUS_MINUS,
         CalculatorSymbols.BACKSPACE,
     )
     val isCommit = label == "="
-    val isClear = label == "C"
+    val isClear = label == "C" || label == CalculatorSymbols.CLEAR_ALL
     val background = when {
         isCommit -> PixelClay
         isOperator -> PixelButtonAlt
@@ -1052,21 +1068,28 @@ private fun keyBorderColor(label: String): Color =
     when {
         label == CalculatorSymbols.SCI -> PixelClay
         label == "=" -> PixelAmber
-        label == "C" -> PixelError
+        label == "C" || label == CalculatorSymbols.CLEAR_ALL -> PixelError
         label in setOf(
             "+",
             "-",
             CalculatorSymbols.MULTIPLY,
             CalculatorSymbols.DIVIDE,
+            CalculatorSymbols.PARENS,
+            CalculatorSymbols.PERCENT,
             CalculatorSymbols.POWER,
             CalculatorSymbols.SQUARE,
             CalculatorSymbols.SQRT,
+            CalculatorSymbols.INVERSE,
+            CalculatorSymbols.NATURAL_LOG,
+            CalculatorSymbols.COMMON_LOG,
             CalculatorSymbols.PI,
             CalculatorSymbols.DOT,
             "e",
             "sin",
             "cos",
             "tan",
+            CalculatorAngleUnit.RADIAN.label,
+            CalculatorAngleUnit.DEGREE.label,
             "NEXT",
             "A/B",
             CalculatorSymbols.PLUS_MINUS,

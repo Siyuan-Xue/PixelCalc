@@ -3,6 +3,8 @@ package com.example.pixelcalc
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.ln
+import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.math.roundToLong
 import kotlin.math.sin
@@ -10,15 +12,21 @@ import kotlin.math.sqrt
 import kotlin.math.tan
 
 object CalculatorSymbols {
+    const val CLEAR_ALL = "AC"
     const val MULTIPLY = "\u00D7"
     const val DIVIDE = "\u00F7"
     const val PLUS_MINUS = "\u00B1"
     const val BACKSPACE = "\u232B"
+    const val PARENS = "()"
+    const val PERCENT = "%"
     const val SQUARE = "x\u00B2"
     const val SQRT = "\u221A"
     const val POWER = "x\u02B8"
     const val PI = "\u03C0"
     const val DOT = "."
+    const val INVERSE = "Inv"
+    const val NATURAL_LOG = "ln"
+    const val COMMON_LOG = "log"
     const val SCI = "SCI"
 }
 
@@ -40,12 +48,24 @@ enum class CalculatorUnaryOperation(val label: String) {
     COS("cos"),
     TAN("tan"),
     SQUARE(CalculatorSymbols.SQUARE),
-    SQRT(CalculatorSymbols.SQRT);
+    SQRT(CalculatorSymbols.SQRT),
+    PERCENT(CalculatorSymbols.PERCENT),
+    INVERSE(CalculatorSymbols.INVERSE),
+    NATURAL_LOG(CalculatorSymbols.NATURAL_LOG),
+    COMMON_LOG(CalculatorSymbols.COMMON_LOG);
 
     companion object {
         fun fromLabel(label: String): CalculatorUnaryOperation? =
             entries.firstOrNull { it.label == label }
     }
+}
+
+enum class CalculatorAngleUnit(val label: String) {
+    RADIAN("Rad"),
+    DEGREE("Deg");
+
+    fun toggle(): CalculatorAngleUnit =
+        if (this == RADIAN) DEGREE else RADIAN
 }
 
 data class CalculatorState(
@@ -56,20 +76,29 @@ data class CalculatorState(
     val enteringFreshNumber: Boolean = true,
     val hasError: Boolean = false,
     val justEvaluated: Boolean = false,
+    val angleUnit: CalculatorAngleUnit = CalculatorAngleUnit.RADIAN,
+    val expressionTokens: List<String> = emptyList(),
 )
 
 object CalculatorEngine {
     val initialState = CalculatorState()
 
     fun press(state: CalculatorState, key: String): CalculatorState {
-        if (key == "C") return initialState
+        if (key == "C" || key == CalculatorSymbols.CLEAR_ALL) {
+            return freshState(state)
+        }
 
         return when {
+            key == CalculatorSymbols.PARENS -> pressParentheses(state)
+            key == CalculatorSymbols.BACKSPACE -> pressBackspace(state)
             key.length == 1 && key[0].isDigit() -> pressDigit(state, key)
             key == CalculatorSymbols.DOT -> pressDecimal(state)
             key == CalculatorSymbols.PLUS_MINUS -> pressPlusMinus(state)
             key == CalculatorSymbols.PI -> pressConstant(state, kotlin.math.PI)
             key == "e" -> pressConstant(state, kotlin.math.E)
+            key == CalculatorAngleUnit.RADIAN.label || key == CalculatorAngleUnit.DEGREE.label -> {
+                pressAngleUnit(state)
+            }
             CalculatorUnaryOperation.fromLabel(key) != null -> pressUnary(state, key)
             CalculatorOperation.fromSymbol(key) != null -> pressOperation(state, key)
             key == "=" -> pressEquals(state)
@@ -93,7 +122,7 @@ object CalculatorEngine {
     }
 
     private fun pressDigit(state: CalculatorState, digit: String): CalculatorState {
-        val base = if (state.hasError || state.justEvaluated) initialState else state
+        val base = if (state.hasError || state.justEvaluated) freshState(state) else state
         val display = when {
             base.enteringFreshNumber -> digit
             base.display == "0" -> digit
@@ -112,7 +141,7 @@ object CalculatorEngine {
     }
 
     private fun pressDecimal(state: CalculatorState): CalculatorState {
-        val base = if (state.hasError || state.justEvaluated) initialState else state
+        val base = if (state.hasError || state.justEvaluated) freshState(state) else state
         val display = when {
             base.enteringFreshNumber -> "0."
             base.display.contains(".") -> base.display
@@ -125,6 +154,45 @@ object CalculatorEngine {
             currentValue = display.toDoubleOrNull() ?: 0.0,
             enteringFreshNumber = false,
             hasError = false,
+            justEvaluated = false,
+        )
+    }
+
+    private fun pressBackspace(state: CalculatorState): CalculatorState {
+        if (state.hasError || state.justEvaluated) {
+            return freshState(state)
+        }
+
+        if (!state.enteringFreshNumber) {
+            val display = when {
+                state.display.length <= 1 -> "0"
+                state.display.length == 2 && state.display.startsWith("-") -> "0"
+                else -> state.display.dropLast(1)
+            }
+
+            return state.copy(
+                display = display,
+                currentValue = display.toDoubleOrNull() ?: 0.0,
+                enteringFreshNumber = display == "0",
+                justEvaluated = false,
+            )
+        }
+
+        if (state.expressionTokens.isEmpty()) {
+            return state.copy(
+                display = "0",
+                currentValue = 0.0,
+                enteringFreshNumber = true,
+                hasError = false,
+                justEvaluated = false,
+            )
+        }
+
+        val nextTokens = state.expressionTokens.dropLast(1)
+        return state.copy(
+            expressionTokens = nextTokens,
+            pendingOperation = lastOperation(nextTokens),
+            enteringFreshNumber = true,
             justEvaluated = false,
         )
     }
@@ -151,7 +219,7 @@ object CalculatorEngine {
     }
 
     private fun pressConstant(state: CalculatorState, value: Double): CalculatorState {
-        val base = if (state.hasError || state.justEvaluated) initialState else state
+        val base = if (state.hasError || state.justEvaluated) freshState(state) else state
 
         return base.copy(
             display = formatResult(value),
@@ -162,20 +230,57 @@ object CalculatorEngine {
         )
     }
 
+    private fun pressAngleUnit(state: CalculatorState): CalculatorState =
+        state.copy(angleUnit = state.angleUnit.toggle())
+
+    private fun pressParentheses(state: CalculatorState): CalculatorState {
+        val base = if (state.hasError || state.justEvaluated) freshState(state) else state
+        val tokensWithOperand = appendCurrentOperand(base)
+        val canClose = unmatchedOpenCount(tokensWithOperand) > 0 &&
+            tokensWithOperand.lastOrNull() != OPEN_PAREN &&
+            !tokensWithOperand.lastOrNull().isOperationToken()
+
+        if (canClose) {
+            val nextTokens = tokensWithOperand + CLOSE_PAREN
+            return base.copy(
+                expressionTokens = nextTokens,
+                pendingOperation = lastOperation(nextTokens),
+                enteringFreshNumber = true,
+                justEvaluated = false,
+            )
+        }
+
+        val needsImplicitMultiply = !base.enteringFreshNumber ||
+            base.expressionTokens.lastOrNull() == CLOSE_PAREN
+        val nextTokens = if (needsImplicitMultiply) {
+            appendCurrentOperand(base) + CalculatorSymbols.MULTIPLY + OPEN_PAREN
+        } else {
+            base.expressionTokens + OPEN_PAREN
+        }
+
+        return base.copy(
+            display = "0",
+            currentValue = 0.0,
+            expressionTokens = nextTokens,
+            pendingOperation = null,
+            enteringFreshNumber = true,
+            justEvaluated = false,
+        )
+    }
+
     private fun pressUnary(state: CalculatorState, label: String): CalculatorState {
         if (state.hasError) return state
 
         val operation = CalculatorUnaryOperation.fromLabel(label) ?: return state
-        val currentValue = readCurrentValue(state) ?: return errorState()
-        val result = applyUnaryOperation(currentValue, operation) ?: return errorState()
-        val isSecondOperand = state.pendingOperation != null
+        val currentValue = readCurrentValue(state) ?: return errorState(state)
+        val result = applyUnaryOperation(currentValue, operation, state.angleUnit) ?: return errorState(state)
 
         return state.copy(
             display = formatResult(result),
             currentValue = result,
-            enteringFreshNumber = !isSecondOperand,
+            enteringFreshNumber = false,
             hasError = false,
-            justEvaluated = !isSecondOperand,
+            justEvaluated = false,
         )
     }
 
@@ -183,25 +288,38 @@ object CalculatorEngine {
         if (state.hasError) return state
 
         val operation = CalculatorOperation.fromSymbol(symbol) ?: return state
-        val currentValue = readCurrentValue(state) ?: return errorState()
-
-        if (state.accumulator != null && state.pendingOperation != null && !state.enteringFreshNumber) {
-            val result = applyOperation(state.accumulator, currentValue, state.pendingOperation)
-                ?: return errorState()
-
-            return state.copy(
-                display = formatResult(result),
-                currentValue = result,
-                accumulator = result,
-                pendingOperation = operation,
-                enteringFreshNumber = true,
-                justEvaluated = false,
-            )
+        val base = if (state.justEvaluated) {
+            state.copy(expressionTokens = emptyList(), enteringFreshNumber = false, justEvaluated = false)
+        } else {
+            state
+        }
+        val tokensWithOperand = appendCurrentOperand(base)
+        val lastToken = tokensWithOperand.lastOrNull()
+        val nextTokens = when {
+            tokensWithOperand.isEmpty() && operation == CalculatorOperation.SUBTRACT -> {
+                listOf("0", operation.symbol)
+            }
+            tokensWithOperand.isEmpty() -> {
+                return base.copy(pendingOperation = operation, enteringFreshNumber = true)
+            }
+            lastToken.isOperationToken() -> {
+                tokensWithOperand.dropLast(1) + operation.symbol
+            }
+            lastToken == OPEN_PAREN && operation == CalculatorOperation.SUBTRACT -> {
+                tokensWithOperand + "0" + operation.symbol
+            }
+            lastToken == OPEN_PAREN -> {
+                return base
+            }
+            else -> {
+                tokensWithOperand + operation.symbol
+            }
         }
 
-        return state.copy(
-            accumulator = state.accumulator ?: currentValue,
+        return base.copy(
+            expressionTokens = nextTokens,
             pendingOperation = operation,
+            accumulator = null,
             enteringFreshNumber = true,
             justEvaluated = false,
         )
@@ -210,64 +328,173 @@ object CalculatorEngine {
     private fun pressEquals(state: CalculatorState): CalculatorState {
         if (state.hasError) return state
 
-        val operation = state.pendingOperation ?: return state.copy(
-            enteringFreshNumber = true,
-            justEvaluated = true,
-        )
+        val tokens = tokensForEvaluation(state) ?: return errorState(state)
+        if (tokens.isEmpty()) {
+            return state.copy(enteringFreshNumber = true, justEvaluated = true)
+        }
 
-        val left = state.accumulator ?: return state
-        val right = readCurrentValue(state) ?: return errorState()
-        val result = applyOperation(left, right, operation) ?: return errorState()
-
+        val result = ExpressionParser(tokens).parse() ?: return errorState(state)
         return CalculatorState(
             display = formatResult(result),
             currentValue = result,
             accumulator = result,
             enteringFreshNumber = true,
             justEvaluated = true,
+            angleUnit = state.angleUnit,
         )
-    }
-
-    private fun applyOperation(
-        left: Double,
-        right: Double,
-        operation: CalculatorOperation,
-    ): Double? {
-        val result = when (operation) {
-            CalculatorOperation.ADD -> left + right
-            CalculatorOperation.SUBTRACT -> left - right
-            CalculatorOperation.MULTIPLY -> left * right
-            CalculatorOperation.DIVIDE -> if (abs(right) < EPSILON) return null else left / right
-            CalculatorOperation.POWER -> left.pow(right)
-        }
-
-        return result.takeIf(Double::isFinite)
     }
 
     private fun applyUnaryOperation(
         value: Double,
         operation: CalculatorUnaryOperation,
+        angleUnit: CalculatorAngleUnit,
     ): Double? {
+        val angleValue = when (angleUnit) {
+            CalculatorAngleUnit.RADIAN -> value
+            CalculatorAngleUnit.DEGREE -> Math.toRadians(value)
+        }
         val result = when (operation) {
-            CalculatorUnaryOperation.SIN -> sin(value)
-            CalculatorUnaryOperation.COS -> cos(value)
+            CalculatorUnaryOperation.SIN -> sin(angleValue)
+            CalculatorUnaryOperation.COS -> cos(angleValue)
             CalculatorUnaryOperation.TAN -> {
-                if (abs(cos(value)) < EPSILON) return null
-                tan(value)
+                if (abs(cos(angleValue)) < EPSILON) return null
+                tan(angleValue)
             }
             CalculatorUnaryOperation.SQUARE -> value * value
             CalculatorUnaryOperation.SQRT -> if (value < 0.0) return null else sqrt(value)
+            CalculatorUnaryOperation.PERCENT -> value / 100.0
+            CalculatorUnaryOperation.INVERSE -> if (abs(value) < EPSILON) return null else 1.0 / value
+            CalculatorUnaryOperation.NATURAL_LOG -> if (value <= 0.0) return null else ln(value)
+            CalculatorUnaryOperation.COMMON_LOG -> if (value <= 0.0) return null else log10(value)
         }
 
         return result.takeIf(Double::isFinite)
     }
 
-    private fun errorState(): CalculatorState =
-        CalculatorState(display = "ERR", hasError = true)
+    private fun appendCurrentOperand(state: CalculatorState): List<String> {
+        if (state.enteringFreshNumber || state.hasError) return state.expressionTokens
+        val value = state.currentValue ?: state.display.toDoubleOrNull() ?: return state.expressionTokens
+        return state.expressionTokens + value.toString()
+    }
+
+    private fun tokensForEvaluation(state: CalculatorState): List<String>? {
+        var tokens = appendCurrentOperand(state)
+        if (tokens.isEmpty()) return tokens
+        if (tokens.last().isOperationToken() || tokens.last() == OPEN_PAREN) return null
+
+        var depth = 0
+        tokens.forEach { token ->
+            when (token) {
+                OPEN_PAREN -> depth += 1
+                CLOSE_PAREN -> {
+                    depth -= 1
+                    if (depth < 0) return null
+                }
+            }
+        }
+        tokens = tokens + List(depth) { CLOSE_PAREN }
+        return tokens
+    }
+
+    private fun unmatchedOpenCount(tokens: List<String>): Int {
+        var depth = 0
+        tokens.forEach { token ->
+            when (token) {
+                OPEN_PAREN -> depth += 1
+                CLOSE_PAREN -> depth = (depth - 1).coerceAtLeast(0)
+            }
+        }
+        return depth
+    }
+
+    private fun lastOperation(tokens: List<String>): CalculatorOperation? =
+        tokens.asReversed().firstNotNullOfOrNull(CalculatorOperation::fromSymbol)
+
+    private fun String?.isOperationToken(): Boolean =
+        this != null && CalculatorOperation.fromSymbol(this) != null
+
+    private fun freshState(state: CalculatorState): CalculatorState =
+        initialState.copy(angleUnit = state.angleUnit)
+
+    private fun errorState(state: CalculatorState): CalculatorState =
+        CalculatorState(display = "ERR", hasError = true, angleUnit = state.angleUnit)
 
     private fun readCurrentValue(state: CalculatorState): Double? =
         state.currentValue ?: state.display.toDoubleOrNull()
 
+    private class ExpressionParser(
+        private val tokens: List<String>,
+    ) {
+        private var position = 0
+
+        fun parse(): Double? {
+            val result = parseExpression() ?: return null
+            if (position != tokens.size) return null
+            return result.takeIf(Double::isFinite)
+        }
+
+        private fun parseExpression(): Double? {
+            var result = parseTerm() ?: return null
+            while (true) {
+                result = when {
+                    match("+") -> result + (parseTerm() ?: return null)
+                    match("-") -> result - (parseTerm() ?: return null)
+                    else -> return result
+                }
+            }
+        }
+
+        private fun parseTerm(): Double? {
+            var result = parsePower() ?: return null
+            while (true) {
+                result = when {
+                    match(CalculatorSymbols.MULTIPLY) -> result * (parsePower() ?: return null)
+                    match(CalculatorSymbols.DIVIDE) -> {
+                        val divisor = parsePower() ?: return null
+                        if (abs(divisor) < EPSILON) return null
+                        result / divisor
+                    }
+                    else -> return result
+                }
+            }
+        }
+
+        private fun parsePower(): Double? {
+            val base = parseUnary() ?: return null
+            if (!match(CalculatorSymbols.POWER)) return base
+            val exponent = parsePower() ?: return null
+            return base.pow(exponent).takeIf(Double::isFinite)
+        }
+
+        private fun parseUnary(): Double? =
+            when {
+                match("+") -> parseUnary()
+                match("-") -> parseUnary()?.unaryMinus()
+                else -> parsePrimary()
+            }
+
+        private fun parsePrimary(): Double? {
+            if (match(OPEN_PAREN)) {
+                val result = parseExpression() ?: return null
+                if (!match(CLOSE_PAREN)) return null
+                return result
+            }
+
+            val token = tokens.getOrNull(position) ?: return null
+            val value = token.toDoubleOrNull() ?: return null
+            position += 1
+            return value
+        }
+
+        private fun match(token: String): Boolean {
+            if (tokens.getOrNull(position) != token) return false
+            position += 1
+            return true
+        }
+    }
+
+    private const val OPEN_PAREN = "("
+    private const val CLOSE_PAREN = ")"
     private const val MAX_DISPLAY_LENGTH = 14
     private const val EPSILON = 0.000000001
 }

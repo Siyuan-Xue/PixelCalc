@@ -35,6 +35,46 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun allClearLabelResetsDisplay() {
+        assertEquals("0", calculate("9", "+", "1", CalculatorSymbols.CLEAR_ALL))
+    }
+
+    @Test
+    fun multiplicationTakesPrecedenceOverAddition() {
+        assertEquals(
+            "14",
+            calculate("2", "+", "3", CalculatorSymbols.MULTIPLY, "4", "="),
+        )
+    }
+
+    @Test
+    fun parenthesesOverrideOperatorPrecedence() {
+        assertEquals(
+            "20",
+            calculate(
+                "2",
+                CalculatorSymbols.MULTIPLY,
+                CalculatorSymbols.PARENS,
+                "3",
+                "+",
+                "7",
+                CalculatorSymbols.PARENS,
+                "=",
+            ),
+        )
+    }
+
+    @Test
+    fun percentScalesCurrentValue() {
+        assertEquals("1", calculate("1", "0", "0", CalculatorSymbols.PERCENT))
+    }
+
+    @Test
+    fun backspaceDeletesCurrentInput() {
+        assertEquals("12", calculate("1", "2", "3", CalculatorSymbols.BACKSPACE))
+    }
+
+    @Test
     fun sineUsesRadiansByDefault() {
         assertEquals("0", calculate(CalculatorSymbols.PI, "sin"))
     }
@@ -57,6 +97,18 @@ class ExampleUnitTest {
     @Test
     fun squareProducesExpectedResult() {
         assertEquals("25", calculate("5", CalculatorSymbols.SQUARE))
+    }
+
+    @Test
+    fun inverseAndLogarithmsProduceExpectedResults() {
+        assertEquals("0.25", calculate("4", CalculatorSymbols.INVERSE))
+        assertEquals("1", calculate("e", CalculatorSymbols.NATURAL_LOG))
+        assertEquals("2", calculate("1", "0", "0", CalculatorSymbols.COMMON_LOG))
+    }
+
+    @Test
+    fun degreeModeConvertsTrigonometry() {
+        assertEquals("1", calculate(CalculatorAngleUnit.RADIAN.label, "9", "0", "sin"))
     }
 
     @Test
