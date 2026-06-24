@@ -55,15 +55,31 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
 
-val copyPixelCalcDebugApk by tasks.registering(Copy::class) {
-    dependsOn("assembleDebug")
-    from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
-    into(layout.buildDirectory.dir("outputs/apk/pixelcalc"))
-    rename { "PixelCalc-debug.apk" }
+@org.gradle.work.DisableCachingByDefault(because = "Copies the already-built debug APK to its release asset name.")
+abstract class CopyVersionedApkTask : org.gradle.api.DefaultTask() {
+    @get:org.gradle.api.tasks.InputFile
+    abstract val inputApk: org.gradle.api.file.RegularFileProperty
+
+    @get:org.gradle.api.tasks.OutputFile
+    abstract val outputApk: org.gradle.api.file.RegularFileProperty
+
+    @org.gradle.api.tasks.TaskAction
+    fun copyApk() {
+        inputApk.get().asFile.copyTo(outputApk.get().asFile, overwrite = true)
+    }
 }
 
-afterEvaluate {
-    tasks.named("assembleDebug") {
-        finalizedBy(copyPixelCalcDebugApk)
-    }
+val versionedDebugApkName = "PixelCalc-${android.defaultConfig.versionName}-debug.apk"
+val debugApkOutputDir = layout.buildDirectory.dir("outputs/apk/debug")
+val defaultDebugApk = debugApkOutputDir.map { it.file("app-debug.apk") }
+val versionedDebugApk = debugApkOutputDir.map { it.file(versionedDebugApkName) }
+
+val copyVersionedDebugApk by tasks.registering(CopyVersionedApkTask::class) {
+    dependsOn("assembleDebug")
+    inputApk.set(defaultDebugApk)
+    outputApk.set(versionedDebugApk)
+}
+
+tasks.matching { it.name == "assembleDebug" }.configureEach {
+    finalizedBy(copyVersionedDebugApk)
 }

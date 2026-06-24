@@ -32,13 +32,13 @@ From the project root:
 The debug APK is copied to:
 
 ```text
-app/build/outputs/apk/pixelcalc/PixelCalc-debug.apk
+app/build/outputs/apk/debug/PixelCalc-0.2.1-debug.apk
 ```
 
 ## Install With ADB
 
 ```powershell
-adb install -r app/build/outputs/apk/pixelcalc/PixelCalc-debug.apk
+adb install -r app/build/outputs/apk/debug/PixelCalc-0.2.1-debug.apk
 ```
 
 ## Status
