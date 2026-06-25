@@ -1110,7 +1110,11 @@ private fun PixelKey(
             text = label,
             color = contentColor,
             fontFamily = FontFamily.Monospace,
-            fontSize = if (label.length > 2) 13.sp else 26.sp,
+            fontSize = when {
+                label.length > 3 -> 13.sp
+                label.length > 1 -> 18.sp
+                else -> 26.sp
+            },
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.sp,
             textAlign = TextAlign.Center,

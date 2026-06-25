@@ -75,6 +75,22 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun repeatedBackspaceStopsAtZero() {
+        assertEquals(
+            "0",
+            calculate(
+                "1",
+                "2",
+                "3",
+                CalculatorSymbols.BACKSPACE,
+                CalculatorSymbols.BACKSPACE,
+                CalculatorSymbols.BACKSPACE,
+                CalculatorSymbols.BACKSPACE,
+            ),
+        )
+    }
+
+    @Test
     fun sineUsesRadiansByDefault() {
         assertEquals("0", calculate(CalculatorSymbols.PI, "sin"))
     }

@@ -16,7 +16,7 @@ object CalculatorSymbols {
     const val MULTIPLY = "\u00D7"
     const val DIVIDE = "\u00F7"
     const val PLUS_MINUS = "\u00B1"
-    const val BACKSPACE = "\u232B"
+    const val BACKSPACE = "DEL"
     const val PARENS = "()"
     const val PERCENT = "%"
     const val SQUARE = "x\u00B2"
