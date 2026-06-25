@@ -328,7 +328,7 @@ fun PixelCalcApp(modifier: Modifier = Modifier) {
             .fillMaxSize()
             .background(PixelInk)
             .systemBarsPadding()
-            .padding(20.dp),
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         PixelCalcHeader(
